@@ -1,26 +1,52 @@
-import { Injectable } from '@nestjs/common';
-import { CreateAuthDto } from './dto/create-auth.dto';
-import { UpdateAuthDto } from './dto/update-auth.dto';
+import { HttpException, Injectable } from '@nestjs/common';
+import { RegisterUserDto } from './dto/register.dto';
+import { LoginUserDto } from './dto/login.dto';
+import { hash, compare } from 'bcrypt';
+import { UserModel } from 'src/users/entities/user.entity';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { throwError } from 'rxjs';
 
 @Injectable()
 export class AuthService {
-  create(createAuthDto: CreateAuthDto) {
-    return 'This action adds a new auth';
-  }
+  constructor(
+    @InjectRepository(UserModel)
+    private userRepository: Repository<UserModel>
+  ) {}
 
-  findAll() {
-    return `This action returns all auth`;
-  }
+  async register(userObject: RegisterUserDto) {
+    const { password } = userObject;
 
-  findOne(id: number) {
-    return `This action returns a #${id} auth`;
-  }
+    //Encriptar la contraseña
+    const plainToHash = await hash(password, 10);
 
-  update(id: number, updateAuthDto: UpdateAuthDto) {
-    return `This action updates a #${id} auth`;
-  }
+    //registrar/crear usuario
+    const newUser = this.userRepository.create({
+      ...userObject,
+      password: plainToHash,
+    });
 
-  remove(id: number) {
-    return `This action removes a #${id} auth`;
+    //guardar el usuario en la bd
+    return this.userRepository.save(newUser);
+  }
+  
+  async login(userObject: LoginUserDto) {
+    const {email, password} = userObject;
+
+    //verifica si el usuario existe
+    const findUser = await this.userRepository.findOne({where: {email}});
+
+    //si no existe se lanza error
+    if (!findUser) throw new HttpException('USER_NOT_FOUND', 404);
+
+    //se compara la contraseña hasehada con la ingresada
+    const checkPassword = await compare(password, findUser.password);
+
+    //si no coinicide se lanza error
+    if (!checkPassword) throw new HttpException('PASSWORD_INVALID', 403);
+
+    const data = findUser;
+
+    return data;
   }
 }
